@@ -127,6 +127,11 @@
   .bar .h { background: var(--husband); }
   .bar .w { background: var(--wife); }
   .cat-detail { font-size: 12px; color: var(--muted); margin-top: 3px; display: flex; justify-content: space-between; }
+  .cat-detail .pos { color: var(--income); }
+  .cat.static { cursor: default; }
+  .bar.thin { height: 4px; margin-top: 3px; }
+  .bar .i, .dot.i { background: var(--income); }
+  .view-seg { margin-bottom: 12px; }
 
   .transfer { font-size: 13px; color: var(--muted); }
   .transfer b { color: var(--text); }
@@ -292,6 +297,7 @@
     index: 0,            // 보고 있는 달
     tab: 'summary',
     catMode: 'expense',  // 요약 화면 카테고리: 지출/수입
+    view: 'month',       // 요약 화면: month(월별) / year(올해 누적)
     tx: {},              // 월별 거래 목록 캐시
     filter: { owner: 'all', kind: 'all', category: '', day: '' },
     editing: null,
@@ -341,10 +347,33 @@
   function closeSheet(id) { $(id).classList.remove('open'); if (id === 'editor') S.editing = null; }
 
   // ───────── 공통 ─────────
+  function isYearView() { return S.tab === 'summary' && S.view === 'year'; }
+  function curYear() { return curMonth().slice(0, 4); }
+  function yearList() {
+    var ys = [];
+    S.data.months.forEach(function (m) { var y = m.slice(0, 4); if (ys.indexOf(y) < 0) ys.push(y); });
+    return ys;
+  }
+  // 다른 해로 이동: 그 해의 마지막 달을 고름
+  function moveYear(step) {
+    var ys = yearList(), i = ys.indexOf(curYear()) + step;
+    if (i < 0 || i >= ys.length) return;
+    var last = -1;
+    S.data.months.forEach(function (m, k) { if (m.slice(0, 4) === ys[i]) last = k; });
+    S.index = last;
+    render();
+  }
   function renderHeader() {
-    $('monthLabel').textContent = monthText(curMonth());
-    $('prev').disabled = S.index <= 0;
-    $('next').disabled = S.index >= S.data.months.length - 1;
+    if (isYearView()) {
+      var ys = yearList(), yi = ys.indexOf(curYear());
+      $('monthLabel').textContent = curYear() + '년';
+      $('prev').disabled = yi <= 0;
+      $('next').disabled = yi >= ys.length - 1;
+    } else {
+      $('monthLabel').textContent = monthText(curMonth());
+      $('prev').disabled = S.index <= 0;
+      $('next').disabled = S.index >= S.data.months.length - 1;
+    }
     $('tabSummary').classList.toggle('on', S.tab === 'summary');
     $('tabTx').classList.toggle('on', S.tab === 'tx');
     $('summaryView').hidden = S.tab !== 'summary';
@@ -414,13 +443,134 @@
     return html;
   }
 
+  function viewSeg() {
+    return '<div class="seg view-seg"><button data-view="month" class="' + (S.view === 'month' ? 'on' : '') + '">월별</button>' +
+      '<button data-view="year" class="' + (S.view === 'year' ? 'on' : '') + '">' + curYear() + '년 누적</button></div>';
+  }
+  function bindView(v) {
+    v.querySelectorAll('[data-view]').forEach(function (b) {
+      b.onclick = function () { S.view = b.getAttribute('data-view'); render(); window.scrollTo(0, 0); };
+    });
+  }
+
+  // 올해(보고 있는 달의 해) 누적: 월별 요약을 더함
+  function yearTotals(y) {
+    var out = { months: [], expense: null, income: null, transfer: { husband: 0, wife: 0, count: 0 } };
+    function blank() { return { total: 0, husband: 0, wife: 0, count: 0, cats: {} }; }
+    out.expense = blank(); out.income = blank();
+    function add(t, s) {
+      t.total += s.total; t.husband += s.husband; t.wife += s.wife; t.count += s.count;
+      s.categories.forEach(function (c) {
+        var x = t.cats[c.name] || (t.cats[c.name] = { name: c.name, husband: 0, wife: 0, total: 0 });
+        x.husband += c.husband; x.wife += c.wife; x.total += c.total;
+      });
+    }
+    S.data.months.forEach(function (m) {
+      if (m.slice(0, 4) !== y) return;
+      var s = S.data.data[m];
+      out.months.push({ month: m, expense: s.expense, income: s.income });
+      add(out.expense, s.expense); add(out.income, s.income);
+      out.transfer.husband += s.transfer.husband; out.transfer.wife += s.transfer.wife; out.transfer.count += s.transfer.count;
+    });
+    [out.expense, out.income].forEach(function (t) {
+      t.categories = Object.keys(t.cats).map(function (k) { return t.cats[k]; })
+        .filter(function (c) { return c.total !== 0; })
+        .sort(function (a, b) { return b.total - a.total; });
+    });
+    return out;
+  }
+
+  function renderYear() {
+    var y = curYear(), Y = yearTotals(y), N = S.data.names;
+    var ex = Y.expense, inc = Y.income, net = inc.total - ex.total;
+    var nm = Y.months.length;
+    var html = viewSeg() + '<div class="cards">';
+    html += '<div class="card total"><div class="label">' + y + '년 둘이 합친 지출 (' +
+      Number(Y.months[0].month.slice(5)) + '~' + Number(Y.months[nm - 1].month.slice(5)) + '월)</div>' +
+      '<div class="value num">' + fmt(ex.total) + '</div>' +
+      '<div class="split"><div class="h" style="width:' + pct(ex.husband, ex.total) + '%"></div>' +
+      '<div class="w" style="width:' + pct(ex.wife, ex.total) + '%"></div></div>' +
+      '<div class="flow num"><span>수입 <b class="pos">' + fmt(inc.total) + '</b></span>' +
+      '<span>수입 − 지출 <b class="' + (net >= 0 ? 'pos' : '') + '">' + signed(net) + '</b></span>' +
+      '<span>월평균 지출 <b>' + fmt(ex.total / nm) + '</b></span></div></div>';
+    [['husband', N.husband, 'h'], ['wife', N.wife, 'w']].forEach(function (p) {
+      html += '<div class="card"><div class="label"><span class="dot ' + p[2] + '"></span>' + esc(p[1]) + ' 지출</div>' +
+        '<div class="value num">' + fmt(ex[p[0]]) + '</div>' +
+        '<div class="sub num">수입 <span class="inc">' + fmt(inc[p[0]]) + '</span></div></div>';
+    });
+    html += '</div>';
+
+    // 월별 흐름
+    var maxM = 0;
+    Y.months.forEach(function (r) { maxM = Math.max(maxM, r.expense.total, r.income.total); });
+    html += '<section class="panel"><div class="panel-head"><h2>월별 지출 · 수입</h2></div>' +
+      '<div class="legend"><span><span class="dot h"></span>' + esc(N.husband) + ' 지출</span><span><span class="dot w"></span>' +
+      esc(N.wife) + ' 지출</span><span><span class="dot i"></span>수입</span><span>· 누르면 그 달로</span></div>';
+    Y.months.forEach(function (r) {
+      var e = r.expense, n = r.income.total - e.total;
+      html += '<button class="cat" data-month="' + r.month + '">' +
+        '<div class="cat-top"><span class="cat-name">' + Number(r.month.slice(5)) + '월</span>' +
+        '<span class="cat-amt num">' + fmt(e.total) + '</span></div>' +
+        '<div class="bar"><div class="h" style="width:' + (maxM ? Math.max(0, e.husband) / maxM * 100 : 0) + '%"></div>' +
+        '<div class="w" style="width:' + (maxM ? Math.max(0, e.wife) / maxM * 100 : 0) + '%"></div></div>' +
+        '<div class="bar thin"><div class="i" style="width:' + (maxM ? Math.max(0, r.income.total) / maxM * 100 : 0) + '%"></div></div>' +
+        '<div class="cat-detail num"><span>수입 ' + short(r.income.total) + ' · 수입 − 지출 <span class="' + (n >= 0 ? 'pos' : '') + '">' +
+        (n >= 0 ? '+' : '−') + short(Math.abs(n)) + '</span></span><span>›</span></div></button>';
+    });
+    html += '</section>';
+
+    html += catPanel(Y, '올해 ', false);
+    html += transferPanel(Y.transfer);
+    html += '<p class="note">' + y + '년에 기록이 있는 달만 더했어요. 한 사람의 엑셀이 아직 안 올라간 달은 그 사람 금액이 빠져 있어요.</p>';
+
+    var v = $('summaryView');
+    v.innerHTML = html;
+    bindView(v);
+    v.querySelectorAll('[data-mode]').forEach(function (b) {
+      b.onclick = function () { S.catMode = b.getAttribute('data-mode'); renderSummary(); };
+    });
+    v.querySelectorAll('[data-month]').forEach(function (b) {
+      b.onclick = function () { S.index = S.data.months.indexOf(b.getAttribute('data-month')); S.view = 'month'; render(); window.scrollTo(0, 0); };
+    });
+  }
+
+  // 카테고리 막대 (s: 월 또는 연 요약, clickable: 눌러서 거래 내역으로 갈지)
+  function catPanel(s, prefix, clickable) {
+    var N = S.data.names, mode = S.catMode, t = s[mode];
+    var max = t.categories.length ? t.categories[0].total : 0;
+    var html = '<section class="panel"><div class="panel-head"><h2>' + prefix + '카테고리별 ' + KIND_OF[mode] + '</h2>' +
+      '<div class="seg"><button data-mode="expense" class="' + (mode === 'expense' ? 'on' : '') + '">지출</button>' +
+      '<button data-mode="income" class="' + (mode === 'income' ? 'on' : '') + '">수입</button></div></div>' +
+      '<div class="legend"><span><span class="dot h"></span>' + esc(N.husband) + '</span><span><span class="dot w"></span>' +
+      esc(N.wife) + '</span>' + (clickable ? '<span>· 누르면 거래 내역으로</span>' : '') + '</div>';
+    if (!t.categories.length) html += '<div class="empty">' + KIND_OF[mode] + '이 없습니다.</div>';
+    t.categories.forEach(function (c) {
+      var tag = clickable ? 'button' : 'div';
+      html += '<' + tag + ' class="cat' + (clickable ? '' : ' static') + '"' + (clickable ? ' data-cat="' + esc(c.name) + '"' : '') + '>' +
+        '<div class="cat-top"><span class="cat-name">' + esc(c.name) + '</span><span class="cat-amt num">' + fmt(c.total) + '</span></div>' +
+        '<div class="bar"><div class="h" style="width:' + (max > 0 ? Math.max(0, c.husband) / max * 100 : 0) + '%"></div>' +
+        '<div class="w" style="width:' + (max > 0 ? Math.max(0, c.wife) / max * 100 : 0) + '%"></div></div>' +
+        '<div class="cat-detail num"><span>' + esc(N.husband) + ' ' + short(c.husband) + ' · ' + esc(N.wife) + ' ' + short(c.wife) +
+        '</span>' + (clickable ? '<span>›</span>' : '<span>' + (s.expense.total && mode === 'expense' ? Math.round(c.total / s.expense.total * 100) + '%' : '') + '</span>') +
+        '</div></' + tag + '>';
+    });
+    return html + '</section>';
+  }
+  function transferPanel(tr) {
+    var N = S.data.names;
+    return '<section class="panel transfer"><div class="panel-head"><h2>이체 (합계에서 제외)</h2><span>' + tr.count + '건</span></div>' +
+      '<div class="transfer-row"><span>' + esc(N.husband) + '</span><b class="num">' + fmt(tr.husband) + '</b></div>' +
+      '<div class="transfer-row"><span>' + esc(N.wife) + '</span><b class="num">' + fmt(tr.wife) + '</b></div></section>';
+  }
+
   function renderSummary() {
+    if (S.view === 'year') { renderYear(); return; }
     var m = curMonth();
     var s = S.data.data[m];
     var ex = s.expense, inc = s.income;
     var net = inc.total - ex.total;
     var N = S.data.names;
-    var html = '<div class="cards">';
+    var html = viewSeg() + '<div class="cards">';
     html += '<div class="card total"><div class="label">둘이 합친 지출</div>' +
       '<div class="value num">' + fmt(ex.total) + '</div>' +
       '<div class="split"><div class="h" style="width:' + pct(ex.husband, ex.total) + '%"></div>' +
@@ -436,33 +586,13 @@
 
     html += renderCalendar(m, s);
 
-    var mode = S.catMode;
-    var t = s[mode];
-    var max = t.categories.length ? t.categories[0].total : 0;
-    html += '<section class="panel"><div class="panel-head"><h2>카테고리별 ' + KIND_OF[mode] + '</h2>' +
-      '<div class="seg"><button data-mode="expense" class="' + (mode === 'expense' ? 'on' : '') + '">지출</button>' +
-      '<button data-mode="income" class="' + (mode === 'income' ? 'on' : '') + '">수입</button></div></div>' +
-      '<div class="legend"><span><span class="dot h"></span>' + esc(N.husband) + '</span><span><span class="dot w"></span>' +
-      esc(N.wife) + '</span><span>· 누르면 거래 내역으로</span></div>';
-    if (!t.categories.length) html += '<div class="empty">이 달에는 ' + KIND_OF[mode] + '이 없습니다.</div>';
-    t.categories.forEach(function (c) {
-      html += '<button class="cat" data-cat="' + esc(c.name) + '">' +
-        '<div class="cat-top"><span class="cat-name">' + esc(c.name) + '</span><span class="cat-amt num">' + fmt(c.total) + '</span></div>' +
-        '<div class="bar"><div class="h" style="width:' + (max > 0 ? Math.max(0, c.husband) / max * 100 : 0) + '%"></div>' +
-        '<div class="w" style="width:' + (max > 0 ? Math.max(0, c.wife) / max * 100 : 0) + '%"></div></div>' +
-        '<div class="cat-detail num"><span>' + esc(N.husband) + ' ' + short(c.husband) + ' · ' + esc(N.wife) + ' ' + short(c.wife) +
-        '</span><span>›</span></div></button>';
-    });
-    html += '</section>';
-
-    var tr = s.transfer;
-    html += '<section class="panel transfer"><div class="panel-head"><h2>이체 (합계에서 제외)</h2><span>' + tr.count + '건</span></div>' +
-      '<div class="transfer-row"><span>' + esc(N.husband) + '</span><b class="num">' + fmt(tr.husband) + '</b></div>' +
-      '<div class="transfer-row"><span>' + esc(N.wife) + '</span><b class="num">' + fmt(tr.wife) + '</b></div></section>';
+    html += catPanel(s, '', true);
+    html += transferPanel(s.transfer);
     html += '<p class="note">이체(카드 대금, 내 계좌끼리 옮긴 돈, 부부끼리 주고받은 돈)와 결제취소는 수입·지출 합계에서 빠져 있습니다.</p>';
 
     var v = $('summaryView');
     v.innerHTML = html;
+    bindView(v);
     v.querySelectorAll('[data-mode]').forEach(function (b) {
       b.onclick = function () { S.catMode = b.getAttribute('data-mode'); renderSummary(); };
     });
@@ -811,8 +941,14 @@
   }
 
   // ───────── 시작 ─────────
-  $('prev').onclick = function () { if (S.index > 0) { S.index--; render(); } };
-  $('next').onclick = function () { if (S.index < S.data.months.length - 1) { S.index++; render(); } };
+  $('prev').onclick = function () {
+    if (isYearView()) moveYear(-1);
+    else if (S.index > 0) { S.index--; render(); }
+  };
+  $('next').onclick = function () {
+    if (isYearView()) moveYear(1);
+    else if (S.index < S.data.months.length - 1) { S.index++; render(); }
+  };
   $('tabSummary').onclick = function () { S.tab = 'summary'; render(); };
   $('tabTx').onclick = function () { goTx({}); };
   document.querySelectorAll('[data-close]').forEach(function (el) {
