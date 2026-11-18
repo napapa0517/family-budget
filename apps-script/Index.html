@@ -191,6 +191,18 @@
     width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg);
   }
   .field textarea { min-height: 70px; resize: vertical; }
+  .field input[type=text] {
+    width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg);
+  }
+  .hint-inline { font-size: 12px; color: var(--muted); margin-top: 4px; word-break: break-all; }
+  .hint-inline button { border: 0; background: none; padding: 0; color: var(--husband); font-size: 12px; cursor: pointer; text-decoration: underline; }
+  .notice { font-size: 13px; background: var(--soft); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+  .btn-link { display: block; width: 100%; margin-top: 12px; padding: 8px; border: 0; background: none; font-size: 14px; cursor: pointer; color: var(--muted); }
+  .btn-link.danger { color: var(--danger); }
+  .confirm { margin-top: 10px; border: 1px solid var(--danger); border-radius: 12px; padding: 12px; font-size: 13px; }
+  .confirm p { margin: 0 0 10px; }
+  .btn.danger-fill { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .tx.deleted .tx-place { text-decoration: line-through; color: var(--muted); }
   .field input[type=file] { width: 100%; font-size: 13px; }
   .check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 4px 0 14px; }
   .check input { margin-top: 3px; width: 17px; height: 17px; flex: none; }
@@ -244,7 +256,13 @@
   <div class="sheet" role="dialog" aria-modal="true">
     <h3 id="edPlace"></h3>
     <div class="meta num" id="edMeta"></div>
-    <div class="field">
+    <div class="notice" id="edDeletedNote" hidden>삭제한 거래예요. 합계와 목록에서 빠져 있어요. 아래 <b>되살리기</b>를 누르면 돌아와요.</div>
+    <div class="field" id="edTitleWrap">
+      <label for="edTitle">제목 (사용처)</label>
+      <input type="text" id="edTitle" maxlength="100" autocomplete="off">
+      <div class="hint-inline" id="edOrig" hidden></div>
+    </div>
+    <div class="field" id="edCatWrap">
       <label for="edCat">카테고리</label>
       <select id="edCat"></select>
     </div>
@@ -253,13 +271,21 @@
       <input type="checkbox" id="edRule" checked>
       <span id="edRuleText">같은 사용처 거래도 모두 이 카테고리로 바꾸고, 앞으로 올리는 거래에도 적용</span>
     </label>
-    <div class="field">
+    <div class="field" id="edMemoWrap">
       <label for="edMemo">메모</label>
       <textarea id="edMemo" placeholder="예: 시어머니 생신 선물"></textarea>
     </div>
     <div class="actions">
       <button class="btn" data-close="editor">닫기</button>
       <button class="btn primary" id="edSave">저장</button>
+    </div>
+    <button class="btn-link danger" id="edDelete">이 거래 삭제</button>
+    <div class="confirm" id="edConfirm" hidden>
+      <p>이 거래를 삭제할까요? 합계와 목록에서 빠져요. 같은 엑셀을 다시 올려도 다시 생기지 않고, <b>거래 내역 → 삭제됨</b>에서 언제든 되살릴 수 있어요.</p>
+      <div class="actions">
+        <button class="btn" id="edConfirmNo">취소</button>
+        <button class="btn danger-fill" id="edConfirmYes">삭제</button>
+      </div>
     </div>
   </div>
 </div>
@@ -622,8 +648,12 @@
     }
     var f = S.filter;
     var N = S.data.names;
+    var deletedCount = S.tx[m].filter(function (t) { return t.deleted; }).length;
+    if (f.kind === '삭제' && !deletedCount) f.kind = 'all';
     var list = S.tx[m].filter(function (t) {
       if (f.owner !== 'all' && t.owner !== f.owner) return false;
+      if (f.kind === '삭제') return t.deleted && (!f.category || t.category === f.category) && (!f.day || t.dt.slice(0, 10) === f.day);
+      if (t.deleted) return false;
       if (f.kind !== 'all' && t.kind !== f.kind) return false;
       if (f.category && t.category !== f.category) return false;
       if (f.day && t.dt.slice(0, 10) !== f.day) return false;
@@ -637,7 +667,9 @@
         (o[2] ? '<span class="dot ' + o[2] + '"></span>' : '') + esc(o[1]) + '</button>';
     }).join('') +
       (f.day ? '<button class="chip on" id="clearDay">' + dayText(f.day) + ' ✕</button>' : '') + '</div>';
-    html += '<div class="chips">' + [['all', '전체'], ['지출', '지출'], ['수입', '수입'], ['이체', '이체'], ['취소', '취소']].map(function (o) {
+    var kinds = [['all', '전체'], ['지출', '지출'], ['수입', '수입'], ['이체', '이체'], ['취소', '취소']];
+    if (deletedCount) kinds.push(['삭제', '삭제됨 ' + deletedCount]);
+    html += '<div class="chips">' + kinds.map(function (o) {
       return '<button class="chip' + (f.kind === o[0] ? ' on' : '') + '" data-kind="' + o[0] + '">' + o[1] + '</button>';
     }).join('') + '</div>';
     html += '<select class="cat-filter" id="catFilter"><option value="">카테고리 전체</option>' +
@@ -648,6 +680,7 @@
 
     var sumEx = 0, sumIn = 0;
     list.forEach(function (t) {
+      if (t.deleted) return;
       if (t.kind === '지출') sumEx += -t.amount;
       else if (t.kind === '수입') sumIn += t.amount;
     });
@@ -668,11 +701,12 @@
           open = true;
         }
         var cls = t.kind === '취소' ? 'cancel' : t.kind === '이체' ? 'muted' : t.amount > 0 ? 'in' : '';
-        html += '<button class="tx" data-id="' + esc(t.id) + '">' +
+        html += '<button class="tx' + (t.deleted ? ' deleted' : '') + '" data-id="' + esc(t.id) + '">' +
           '<span class="dot ' + (t.owner === '남편' ? 'h' : 'w') + '" title="' + esc(nameOf(t.owner)) + '"></span>' +
           '<div class="tx-main"><div class="tx-place">' + esc(t.place) + '</div>' +
           '<div class="tx-meta"><span class="c">' + esc(t.category) + '</span>' +
-          (t.kind === '이체' || t.kind === '취소' ? '<span class="tag">' + t.kind + '</span>' : '') +
+          (t.deleted ? '<span class="tag">삭제됨</span>' :
+            (t.kind === '이체' || t.kind === '취소' ? '<span class="tag">' + t.kind + '</span>' : '')) +
           '<span>· ' + t.dt.slice(11, 16) + '</span></div>' +
           (t.memo ? '<div class="tx-memo">✎ ' + esc(t.memo) + '</div>' : '') +
           '</div><div class="tx-amt num ' + cls + '">' + signed(t.amount) + '</div></button>';
@@ -717,13 +751,30 @@
     }).join('');
     var isCancel = t.status === '취소';
     $('edCat').disabled = isCancel;
-    $('edCancelHint').hidden = !isCancel;
-    var same = list.filter(function (x) { return x.place === t.place && x.id !== t.id; }).length;
+    $('edCancelHint').hidden = !isCancel || t.deleted;
+    var key = t.origPlace || t.place;
+    var same = list.filter(function (x) { return (x.origPlace || x.place) === key && x.id !== t.id && !x.deleted; }).length;
     $('edRuleText').textContent = '같은 사용처 거래도 모두 이 카테고리로 바꾸고, 앞으로 올리는 거래에도 적용' +
       (same ? ' (이번 달 ' + same + '건 더 있음)' : '');
     $('edRule').checked = true;
-    $('edRuleWrap').hidden = isCancel;
+    $('edRuleWrap').hidden = isCancel || t.deleted;
+    $('edTitle').value = t.place;
+    if (t.origPlace) {
+      $('edOrig').innerHTML = '카카오페이 원래 이름: ' + esc(t.origPlace) + ' · <button type="button" id="edOrigBack">원래대로</button>';
+      $('edOrig').hidden = false;
+      $('edOrigBack').onclick = function () { $('edTitle').value = t.origPlace; };
+    } else {
+      $('edOrig').hidden = true;
+    }
     $('edMemo').value = t.memo || '';
+    // 삭제한 거래는 되살리기만
+    $('edDeletedNote').hidden = !t.deleted;
+    ['edTitleWrap', 'edCatWrap', 'edMemoWrap'].forEach(function (k) { $(k).hidden = t.deleted; });
+    $('edSave').hidden = t.deleted;
+    $('edDelete').textContent = t.deleted ? '되살리기' : '이 거래 삭제';
+    $('edDelete').classList.toggle('danger', !t.deleted);
+    $('edDelete').disabled = false;
+    $('edConfirm').hidden = true;
     $('edSave').disabled = false;
     $('edSave').textContent = '저장';
     openSheet('editor');
@@ -734,13 +785,16 @@
     if (!t) return;
     var category = $('edCat').value;
     var memo = $('edMemo').value.trim();
+    var title = $('edTitle').value.trim();
+    if (!title) { toast('제목을 비워 둘 수 없어요'); $('edTitle').focus(); return; }
     var catChanged = category !== t.category;
+    var titleChanged = title !== t.place;
     var applyRule = catChanged && $('edRule').checked;
-    if (!catChanged && memo === (t.memo || '')) { closeSheet('editor'); return; }
+    if (!catChanged && !titleChanged && memo === (t.memo || '')) { closeSheet('editor'); return; }
 
     $('edSave').disabled = true;
     $('edSave').textContent = '저장 중…';
-    call('updateTransaction', t.id, category, memo, applyRule).then(function (res) {
+    call('updateTransaction', t.id, category, memo, applyRule, titleChanged ? title : null).then(function (res) {
       closeSheet('editor');
       var msg = '저장했어요';
       if (applyRule && res.changed > 1) msg += ' · 같은 사용처 ' + res.changed + '건 변경, 규칙 저장';
@@ -752,6 +806,21 @@
       $('edSave').textContent = '저장';
       toast('저장하지 못했어요: ' + errText(e));
     });
+  }
+
+  function deleteOrRestore(restore) {
+    var t = S.editing;
+    if (!t) return;
+    $('edDelete').disabled = true;
+    $('edConfirmYes').disabled = true;
+    call('deleteTransaction', t.id, restore).then(function () {
+      closeSheet('editor');
+      toast(restore ? '되살렸어요' : '삭제했어요 · 삭제됨에서 되살릴 수 있어요');
+      return refreshAll();
+    }).catch(function (e) {
+      $('edDelete').disabled = false;
+      toast((restore ? '되살리지' : '삭제하지') + ' 못했어요: ' + errText(e));
+    }).then(function () { $('edConfirmYes').disabled = false; });
   }
 
   // ───────── 엑셀 올리기 ─────────
@@ -955,6 +1024,13 @@
     el.onclick = function () { closeSheet(el.getAttribute('data-close')); };
   });
   $('edSave').onclick = saveEditor;
+  $('edDelete').onclick = function () {
+    if (!S.editing) return;
+    if (S.editing.deleted) deleteOrRestore(true);
+    else $('edConfirm').hidden = false;
+  };
+  $('edConfirmNo').onclick = function () { $('edConfirm').hidden = true; };
+  $('edConfirmYes').onclick = function () { deleteOrRestore(false); };
   $('upFile').onchange = onFiles;
   $('upSend').onclick = sendUpload;
 

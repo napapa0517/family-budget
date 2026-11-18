@@ -9,13 +9,18 @@ var SHEET_TX = '거래';
 var SHEET_RULE = '규칙';
 var SHEET_CAT = '카테고리';
 var SHEET_SET = '설정';
-var NUM_COLS = 11;
+var NUM_COLS = 13;
 
 // 거래 탭 열 위치 (0부터 셈)
+//  origPlace(원래 사용처): 제목을 고치면 카카오페이에 적힌 원래 이름을 여기 남깁니다.
+//                         중복 확인·규칙·자동 분류는 이 원래 이름으로 합니다.
+//  deleted(삭제): '삭제'면 화면과 합계에서 빠집니다. 줄은 지우지 않아서
+//                 같은 엑셀을 다시 올려도 되살아나지 않고, 언제든 복원할 수 있습니다.
 var COL = {
   id: 0, datetime: 1, place: 2, amount: 3, status: 4, owner: 5,
-  category: 6, kind: 7, memo: 8, editor: 9, editedAt: 10
+  category: 6, kind: 7, memo: 8, editor: 9, editedAt: 10, origPlace: 11, deleted: 12
 };
+var TX_HEADER = ['거래ID', '날짜시간', '사용처', '금액', '상태', '주인', '카테고리', '구분', '메모', '수정한 사람', '수정 시각', '원래 사용처', '삭제'];
 
 /** 웹앱 주소로 접속하면 화면을 띄웁니다. */
 function doGet() {
@@ -31,7 +36,7 @@ function doGet() {
 function getInitialData() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var tz = ss.getSpreadsheetTimeZone();
-  var rows = readTx_(ss).map(function (v) {
+  var rows = readTx_(ss).filter(function (v) { return !isDeleted_(v); }).map(function (v) {
     var day = dayOf_(v[COL.datetime], tz);
     return {
       month: day.slice(0, 7),
@@ -73,7 +78,9 @@ function getTransactions(month) {
       editor: String(v[COL.editor] || ''),
       editedAt: v[COL.editedAt] instanceof Date
         ? Utilities.formatDate(v[COL.editedAt], tz, 'yyyy-MM-dd HH:mm')
-        : String(v[COL.editedAt] || '')
+        : String(v[COL.editedAt] || ''),
+      origPlace: String(v[COL.origPlace] || ''),
+      deleted: isDeleted_(v)
     });
   });
   out.sort(function (a, b) { return a.dt < b.dt ? 1 : (a.dt > b.dt ? -1 : 0); });
@@ -85,31 +92,39 @@ function getTransactions(month) {
  * applyRule이 참이면:
  *  - 규칙 탭에 '이 사용처 = 이 카테고리'를 저장하고 (다음에 올리는 엑셀에 적용)
  *  - 이미 있는 같은 사용처 거래도 모두 같은 카테고리로 바꿉니다 (결제취소 제외).
+ * newPlace를 주면 제목(사용처)도 바꿉니다. 카카오페이의 원래 이름은 '원래 사용처' 열에 남겨서
+ * 같은 엑셀을 다시 올려도 중복으로 들어오지 않게 합니다.
  * 돌려주는 값: { changed: 바뀐 거래 수, kind: 새 구분 }
  */
-function updateTransaction(id, category, memo, applyRule) {
+function updateTransaction(id, category, memo, applyRule, newPlace) {
   var lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(SHEET_TX);
+    var sheet = ensureTxCols_(ss);
     var catKinds = categoryKindMap_(ss);
     if (!catKinds[category]) throw new Error('없는 카테고리입니다: ' + category);
 
-    var last = sheet.getLastRow();
-    var values = sheet.getRange(2, 1, last - 1, NUM_COLS).getValues();
+    var values = readAllTx_(sheet);
     var editor = currentUser_();
     var now = new Date();
 
-    var target = -1;
-    for (var i = 0; i < values.length; i++) {
-      if (String(values[i][COL.id]) === String(id)) { target = i; break; }
-    }
-    if (target < 0) throw new Error('거래를 찾지 못했습니다. 화면을 새로고침해 주세요.');
-
+    var target = findRow_(values, id);
     var row = values[target];
-    var place = String(row[COL.place]);
+    var place = placeKey_(row); // 규칙·같은 사용처 찾기는 카카오페이 원래 이름으로
     var changed = 0;
+
+    if (newPlace !== undefined && newPlace !== null) {
+      var np = String(newPlace).trim();
+      if (!np) throw new Error('제목을 비워 둘 수 없어요.');
+      if (np !== String(row[COL.place])) {
+        if (!row[COL.origPlace]) row[COL.origPlace] = String(row[COL.place]);
+        row[COL.place] = np;
+        if (np === String(row[COL.origPlace])) row[COL.origPlace] = ''; // 원래 이름으로 되돌린 경우
+        row[COL.editor] = editor;
+        row[COL.editedAt] = now;
+      }
+    }
 
     function setCat(r) {
       if (r[COL.status] === '취소') return false;
@@ -131,17 +146,37 @@ function updateTransaction(id, category, memo, applyRule) {
 
     if (applyRule) {
       for (var j = 0; j < values.length; j++) {
-        if (j !== target && String(values[j][COL.place]) === place && setCat(values[j])) changed++;
+        if (j !== target && !isDeleted_(values[j]) && placeKey_(values[j]) === place && setCat(values[j])) changed++;
       }
       saveRule_(ss, place, category, editor, now);
-      // 카테고리~수정 시각(G:K) 열만 한 번에 씁니다.
-      sheet.getRange(2, COL.category + 1, values.length, NUM_COLS - COL.category)
-        .setValues(values.map(function (r) { return r.slice(COL.category); }));
+      writeRows_(sheet, values, 0, values.length);
     } else {
-      sheet.getRange(target + 2, COL.category + 1, 1, NUM_COLS - COL.category)
-        .setValues([row.slice(COL.category)]);
+      writeRows_(sheet, values, target, 1);
     }
     return { changed: changed, kind: row[COL.kind], editor: editor };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 거래를 삭제하거나(restore=false) 되살립니다(restore=true).
+ * 줄을 지우지 않고 '삭제' 표시만 해서, 같은 엑셀을 다시 올려도 되살아나지 않습니다.
+ */
+function deleteTransaction(id, restore) {
+  var lock = LockService.getDocumentLock();
+  lock.waitLock(15000);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ensureTxCols_(ss);
+    var values = readAllTx_(sheet);
+    var target = findRow_(values, id);
+    var row = values[target];
+    row[COL.deleted] = restore ? '' : '삭제';
+    row[COL.editor] = currentUser_();
+    row[COL.editedAt] = new Date();
+    writeRows_(sheet, values, target, 1);
+    return { deleted: !restore };
   } finally {
     lock.releaseLock();
   }
@@ -167,7 +202,7 @@ function addTransactions(owner, items) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var tz = ss.getSpreadsheetTimeZone();
-    var sheet = ss.getSheetByName(SHEET_TX);
+    var sheet = ensureTxCols_(ss);
     var existing = readTx_(ss);
 
     var have = {};
@@ -175,7 +210,8 @@ function addTransactions(owner, items) {
     existing.forEach(function (v) {
       ids[String(v[COL.id])] = true;
       if (v[COL.owner] !== owner) return;
-      var k = txKey(owner, secOf_(v[COL.datetime], tz), v[COL.place], v[COL.amount]);
+      // 제목을 고쳤거나 삭제한 거래도 원래 이름으로 세서 다시 들어오지 않게 함
+      var k = txKey(owner, secOf_(v[COL.datetime], tz), placeKey_(v), v[COL.amount]);
       have[k] = (have[k] || 0) + 1;
     });
 
@@ -214,7 +250,7 @@ function addTransactions(owner, items) {
       if (!minDt || dt < minDt) minDt = dt;
       if (!maxDt || dt > maxDt) maxDt = dt;
       // 날짜시간은 글자로 넣으면 시트가 날짜로 바꿔 줍니다 (시트 시간대 기준).
-      newRows.push([id, dt, place, amount, status === '취소' ? '취소' : '', owner, category, kind, '', '', '']);
+      newRows.push([id, dt, place, amount, status === '취소' ? '취소' : '', owner, category, kind, '', '', '', '', '']);
     });
 
     if (newRows.length) {
@@ -371,12 +407,52 @@ function summarize(rows) {
 // ───────────────────────── 시트 읽기·쓰기 도우미 ─────────────────────────
 
 function readTx_(ss) {
-  var sheet = ss.getSheetByName(SHEET_TX);
-  var last = sheet.getLastRow();
-  if (last < 2) return [];
-  return sheet.getRange(2, 1, last - 1, NUM_COLS).getValues()
+  return readAllTx_(ss.getSheetByName(SHEET_TX))
     .filter(function (v) { return v[COL.datetime] !== '' && v[COL.datetime] !== null; });
 }
+
+/** 거래 탭 전체 줄 (빈 줄 포함, 줄 번호 = 위치 + 2). 새 열이 아직 없으면 빈 칸으로 채움 */
+function readAllTx_(sheet) {
+  var last = sheet.getLastRow();
+  if (last < 2) return [];
+  var n = Math.min(NUM_COLS, sheet.getMaxColumns());
+  return sheet.getRange(2, 1, last - 1, n).getValues().map(function (r) {
+    while (r.length < NUM_COLS) r.push('');
+    return r;
+  });
+}
+
+/** 원래 사용처, 삭제 열이 없으면 만들고 머리글을 씁니다. */
+function ensureTxCols_(ss) {
+  var sheet = ss.getSheetByName(SHEET_TX);
+  var max = sheet.getMaxColumns();
+  if (max < NUM_COLS) sheet.insertColumnsAfter(max, NUM_COLS - max);
+  var head = sheet.getRange(1, 1, 1, NUM_COLS).getValues()[0];
+  if (head[COL.origPlace] !== TX_HEADER[COL.origPlace] || head[COL.deleted] !== TX_HEADER[COL.deleted]) {
+    sheet.getRange(1, COL.origPlace + 1, 1, 2).setValues([[TX_HEADER[COL.origPlace], TX_HEADER[COL.deleted]]]);
+  }
+  return sheet;
+}
+
+/** 사용처(C)부터 삭제(M)까지만 다시 씁니다. 날짜시간 열은 건드리지 않음 */
+function writeRows_(sheet, values, from, count) {
+  sheet.getRange(from + 2, COL.place + 1, count, NUM_COLS - COL.place)
+    .setValues(values.slice(from, from + count).map(function (r) { return r.slice(COL.place, NUM_COLS); }));
+}
+
+function findRow_(values, id) {
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][COL.id]) === String(id)) return i;
+  }
+  throw new Error('거래를 찾지 못했습니다. 화면을 새로고침해 주세요.');
+}
+
+/** 카카오페이에 적힌 원래 사용처 (제목을 고쳤으면 '원래 사용처' 열) */
+function placeKey_(v) {
+  return String(v[COL.origPlace] || v[COL.place]).trim();
+}
+
+function isDeleted_(v) { return String(v[COL.deleted] || '') === '삭제'; }
 
 function dayOf_(d, tz) {
   return (d instanceof Date) ? Utilities.formatDate(d, tz, 'yyyy-MM-dd') : String(d).slice(0, 10);
@@ -434,7 +510,7 @@ function classifyContext_(ss, existing) {
     existing.forEach(function (v) {
       var cat = String(v[COL.category]);
       if (!cat || cat === '결제취소' || cat === '기타(미분류)') return;
-      var k = String(v[COL.place]).trim() + ((Number(v[COL.amount]) || 0) > 0 ? '|+' : '|-');
+      var k = placeKey_(v) +((Number(v[COL.amount]) || 0) > 0 ? '|+' : '|-');
       var c = counts[k] || (counts[k] = {});
       c[cat] = (c[cat] || 0) + 1;
     });
