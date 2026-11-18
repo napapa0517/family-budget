@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>우리집 가계부 설치</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="가계부">
+<meta name="theme-color" content="#2f3a45">
+<style>
+  :root { --bg: #f6f5f2; --card: #fff; --text: #1f2328; --muted: #6b7078; --line: #e4e2dc; --accent: #2f3a45; --accent-text: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #17191c; --card: #212428; --text: #ecedee; --muted: #9aa0a6; --line: #33373c; --accent: #dfe3e7; --accent-text: #17191c; }
+  }
+  :root[data-theme="dark"] { --bg: #17191c; --card: #212428; --text: #ecedee; --muted: #9aa0a6; --line: #33373c; --accent: #dfe3e7; --accent-text: #17191c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  main { max-width: 440px; margin: 0 auto; padding: 40px 16px; text-align: center; }
+  img.logo { width: 96px; height: 96px; border-radius: 22px; }
+  h1 { font-size: 22px; margin: 14px 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 24px; }
+  .btn { display: block; width: 100%; padding: 14px; border-radius: 14px; font: inherit; font-weight: 700;
+    border: 1px solid var(--line); background: var(--card); color: var(--text); text-decoration: none; cursor: pointer; margin-bottom: 10px; }
+  .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .how { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-top: 18px; font-size: 14px; }
+  .how h2 { font-size: 15px; margin: 0 0 6px; }
+  .how ol { margin: 0; padding-left: 20px; }
+  .done { color: var(--muted); font-size: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="/icons/icon-192.png" alt="">
+  <h1>우리집 가계부</h1>
+  <p class="lead">휴대폰이나 컴퓨터에 앱처럼 설치해 두면<br>아이콘을 눌러 바로 열 수 있어요.</p>
+
+  <button class="btn primary" id="installBtn" hidden>앱으로 설치하기</button>
+  <p class="done" id="installed" hidden>설치됐어요. 홈 화면(바탕화면)의 가계부 아이콘으로 열어 주세요.</p>
+  <a class="btn" href="/">설치하지 않고 바로 열기</a>
+
+  <div class="how" id="howIos" hidden>
+    <h2>아이폰에서 설치하기</h2>
+    <ol>
+      <li>사파리 아래쪽 <b>공유 버튼(□↑)</b>을 눌러요.</li>
+      <li><b>홈 화면에 추가</b>를 누르고 <b>추가</b>를 눌러요.</li>
+    </ol>
+  </div>
+  <div class="how" id="howOther" hidden>
+    <h2>설치 버튼이 안 보이면</h2>
+    <ol>
+      <li><b>안드로이드 크롬:</b> 오른쪽 위 <b>⋮ → 앱 설치</b>(또는 홈 화면에 추가)</li>
+      <li><b>컴퓨터 크롬·엣지:</b> 주소창 오른쪽 <b>설치 아이콘</b> 또는 메뉴 → <b>앱 설치</b></li>
+    </ol>
+  </div>
+</main>
+<script>
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+  var ua = navigator.userAgent;
+  var isIos = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (standalone) location.replace('/');
+  document.getElementById(isIos ? 'howIos' : 'howOther').hidden = false;
+
+  var deferred = null, btn = document.getElementById('installBtn');
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); deferred = e; btn.hidden = false;
+  });
+  btn.onclick = function () {
+    if (!deferred) return;
+    deferred.prompt();
+    deferred.userChoice.then(function () { deferred = null; btn.hidden = true; });
+  };
+  window.addEventListener('appinstalled', function () {
+    btn.hidden = true; document.getElementById('installed').hidden = false;
+  });
+</script>
+</body>
+</html>

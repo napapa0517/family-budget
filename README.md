@@ -4,6 +4,7 @@
 
 - `apps-script/` : 구글 시트에 붙는 앱스 스크립트 코드 (실제 화면과 데이터 처리). 설치 방법은 `apps-script/설치방법.md`
 - `index.html` : Vercel 주소로 열면 앱스 스크립트 웹 앱으로 바로 넘어가는 페이지
+- `install.html`, `manifest.webmanifest`, `sw.js`, `icons/` : 휴대폰·컴퓨터에 앱처럼 설치하는 설정 (설치 주소: `/install`)
 
 데이터는 구글 시트에만 저장되며, 이 저장소와 Vercel에는 거래 데이터가 없습니다.
 시트를 공유받은 구글 계정으로 로그인해야 내용이 보입니다.
