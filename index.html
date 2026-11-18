@@ -2,37 +2,28 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="우리집 가계부">
 <title>우리집 가계부</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A0%3C/text%3E%3C/svg%3E">
+<!-- 구글 앱스 스크립트 웹 앱으로 바로 넘어감. 데이터는 구글 시트에만 있음 -->
+<meta http-equiv="refresh" content="0; url=https://script.google.com/macros/s/AKfycbyV552cKK82gR7kUEqK-5lU6jSQr8OEq25GnR_eAvRo4rtk_UqClU4n2QSEJLD4ppP6/exec">
 <style>
-  :root { --bg: #f6f4ef; --fg: #2b2b2b; --muted: #6b6b6b; --link: #2f5d8a; --bar: #ebe7de; }
+  :root { --bg: #f6f4ef; --fg: #2b2b2b; --link: #2f5d8a; }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #1c1c1e; --fg: #eee; --muted: #aaa; --link: #8ab4e0; --bar: #2a2a2d; }
+    :root:not([data-theme="light"]) { --bg: #1c1c1e; --fg: #eee; --link: #8ab4e0; }
   }
-  :root[data-theme="dark"] { --bg: #1c1c1e; --fg: #eee; --muted: #aaa; --link: #8ab4e0; --bar: #2a2a2d; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  :root[data-theme="dark"] { --bg: #1c1c1e; --fg: #eee; --link: #8ab4e0; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 0 16px;
+    background: var(--bg); color: var(--fg); text-align: center;
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
-  body { display: flex; flex-direction: column; }
-  .bar { flex: none; padding: 6px 16px; padding-top: max(6px, env(safe-area-inset-top));
-    font-size: 12px; color: var(--muted); background: var(--bar); text-align: center; }
-  .bar a { color: var(--link); font-weight: 600; text-decoration: none; }
-  iframe { flex: 1; width: 100%; border: 0; display: block; }
+  a { color: var(--link); font-weight: 600; }
 </style>
 </head>
 <body>
-  <div class="bar">화면이 안 보이거나 로그인 오류가 나면 <a id="direct" href="#" target="_top">여기를 눌러 바로 열기</a></div>
-  <iframe id="app" title="우리집 가계부" allow="clipboard-write"></iframe>
-<script>
-  // 구글 앱스 스크립트 웹 앱 주소. 데이터는 구글 시트에만 있고, 이 페이지는 화면을 감싸기만 함.
-  var APP_URL = 'https://script.google.com/macros/s/AKfycbyV552cKK82gR7kUEqK-5lU6jSQr8OEq25GnR_eAvRo4rtk_UqClU4n2QSEJLD4ppP6/exec';
-  document.getElementById('direct').href = APP_URL;
-  document.getElementById('app').src = APP_URL;
-</script>
+  <p>우리집 가계부로 이동하는 중…<br><br>
+  넘어가지 않으면 <a id="go" href="https://script.google.com/macros/s/AKfycbyV552cKK82gR7kUEqK-5lU6jSQr8OEq25GnR_eAvRo4rtk_UqClU4n2QSEJLD4ppP6/exec">여기를 눌러 주세요</a></p>
+<script>location.replace(document.getElementById('go').href);</script>
 </body>
 </html>
