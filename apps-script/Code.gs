@@ -22,9 +22,7 @@ function doGet() {
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('우리집 가계부')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    // Vercel 주소 안에서도 열 수 있게 허용 (데이터 권한은 그대로 시트 공유로 막힘)
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 // ───────────────────────── 화면에서 부르는 함수 ─────────────────────────
