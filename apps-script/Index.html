@@ -132,6 +132,28 @@
   .bar.thin { height: 4px; margin-top: 3px; }
   .bar .i, .dot.i { background: var(--income); }
   .view-seg { margin-bottom: 12px; }
+  .advice .tip { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; border: 0; background: var(--soft);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 14px; line-height: 1.5; border-left: 4px solid var(--muted); }
+  .advice button.tip { cursor: pointer; }
+  .advice .tip.warn { border-left-color: var(--danger); }
+  .advice .tip.good { border-left-color: var(--income); }
+  .advice .tip.info { border-left-color: var(--husband); }
+  .advice .ti { flex: none; }
+  .advice .tt { flex: 1; min-width: 0; }
+  .advice .tg { flex: none; color: var(--muted); }
+  .advice-note { font-size: 11px; color: var(--muted); margin: 2px 0 0; }
+  details.report { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0 14px; margin-bottom: 10px; }
+  details.report summary { list-style: none; cursor: pointer; padding: 14px 0; display: flex; flex-direction: column; gap: 2px; }
+  details.report summary::-webkit-details-marker { display: none; }
+  .r-title { font-weight: 700; font-size: 15px; }
+  .r-meta { font-size: 12px; color: var(--muted); }
+  .r-body { border-top: 1px solid var(--line); padding: 4px 0 12px; font-size: 14px; line-height: 1.6; }
+  .r-body h4 { font-size: 14px; margin: 14px 0 4px; }
+  .r-body p { margin: 6px 0; }
+  .r-body ul { margin: 4px 0; padding-left: 18px; }
+  .r-body li { margin: 3px 0; }
+  .r-body .r-warn { background: var(--soft); border-left: 4px solid var(--danger); border-radius: 8px; padding: 8px 10px; }
+  .r-body .r-good { background: var(--soft); border-left: 4px solid var(--income); border-radius: 8px; padding: 8px 10px; }
 
   .transfer { font-size: 13px; color: var(--muted); }
   .transfer b { color: var(--text); }
@@ -244,10 +266,12 @@
   <div class="seg tabs" role="tablist">
     <button id="tabSummary" class="on" role="tab">요약</button>
     <button id="tabTx" role="tab">거래 내역</button>
+    <button id="tabConsult" role="tab">컨설팅</button>
   </div>
 
   <div id="summaryView"><div class="state">불러오는 중…</div></div>
   <div id="txView" hidden></div>
+  <div id="consultView" hidden></div>
 </div>
 
 <!-- 거래 수정 창 -->
@@ -402,12 +426,52 @@
     }
     $('tabSummary').classList.toggle('on', S.tab === 'summary');
     $('tabTx').classList.toggle('on', S.tab === 'tx');
+    $('tabConsult').classList.toggle('on', S.tab === 'consult');
     $('summaryView').hidden = S.tab !== 'summary';
     $('txView').hidden = S.tab !== 'tx';
+    $('consultView').hidden = S.tab !== 'consult';
+    document.querySelector('.month-nav').style.visibility = S.tab === 'consult' ? 'hidden' : '';
   }
   function render() {
     renderHeader();
-    if (S.tab === 'summary') renderSummary(); else renderTx();
+    if (S.tab === 'summary') renderSummary();
+    else if (S.tab === 'consult') renderConsult();
+    else renderTx();
+  }
+
+  // ───────── 컨설팅 화면 ─────────
+  // 내용 서식: 줄 맨 앞 '## ' = 소제목, '- ' = 목록, '**굵게**', '!! ' = 주의 문단, '✓ ' = 잘한 점
+  function fmtReport(text) {
+    var out = [], list = false;
+    String(text).split(/\r?\n/).forEach(function (line) {
+      var l = esc(line.trim()).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+      var isItem = /^- /.test(line.trim());
+      if (list && !isItem) { out.push('</ul>'); list = false; }
+      if (!l) return;
+      if (/^## /.test(line.trim())) out.push('<h4>' + l.slice(3) + '</h4>');
+      else if (isItem) { if (!list) { out.push('<ul>'); list = true; } out.push('<li>' + l.slice(2) + '</li>'); }
+      else if (/^!! /.test(line.trim())) out.push('<p class="r-warn">' + l.slice(3) + '</p>');
+      else if (/^✓ /.test(line.trim())) out.push('<p class="r-good">' + l.slice(2) + '</p>');
+      else out.push('<p>' + l + '</p>');
+    });
+    if (list) out.push('</ul>');
+    return out.join('');
+  }
+  function renderConsult() {
+    var v = $('consultView');
+    if (!S.reports) {
+      v.innerHTML = '<div class="state">불러오는 중…</div>';
+      call('getConsultReports').then(function (r) { S.reports = r; if (S.tab === 'consult') renderConsult(); })
+        .catch(function (e) { v.innerHTML = '<div class="state">불러오지 못했습니다.<br>' + esc(errText(e)) + '</div>'; });
+      return;
+    }
+    if (!S.reports.length) { v.innerHTML = '<div class="state">아직 컨설팅 리포트가 없어요.</div>'; return; }
+    v.innerHTML = '<p class="note" style="margin:0 0 10px">거래가 새로 올라올 때마다 우리집 재정 컨설턴트(Claude)가 남기는 리포트예요.</p>' +
+      S.reports.map(function (r, i) {
+        return '<details class="report"' + (i === 0 ? ' open' : '') + '><summary><span class="r-title">' + esc(r.title) + '</span>' +
+          '<span class="r-meta num">' + esc(r.date) + (r.period ? ' · ' + esc(r.period) : '') + '</span></summary>' +
+          '<div class="r-body">' + fmtReport(r.body) + '</div></details>';
+      }).join('');
   }
   function goTx(filter) {
     S.filter = Object.assign({ owner: 'all', kind: 'all', category: '', day: '' }, filter);
@@ -469,6 +533,162 @@
     return html;
   }
 
+  // ───────── 조언 (데이터는 밖으로 보내지 않고 화면 안에서 계산) ─────────
+  function catMap(t) { var o = {}; t.categories.forEach(function (c) { o[c.name] = c; }); return o; }
+  function manwon(n) { return short(Math.round(n)) + '원'; }
+  function lastDayOf(m) { return new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0).getDate(); }
+  // 비교 기준: 바로 앞 최대 3달 중, 이번 달과 기록이 있는 사람이 같은 달만 (한 사람 엑셀이 빠진 달은 빼고)
+  function baseMonths(m) {
+    var i = S.data.months.indexOf(m), cur = S.data.data[m].expense, out = [];
+    for (var k = i - 1; k >= 0 && out.length < 3; k--) {
+      var e = S.data.data[S.data.months[k]].expense;
+      if ((e.husband > 0) === (cur.husband > 0) && (e.wife > 0) === (cur.wife > 0)) out.push(S.data.months[k]);
+    }
+    return out;
+  }
+  // 이번 달이 아직 진행 중이면, 지금까지 기록된 마지막 날 기준 진행률
+  function monthProgress(m) {
+    var now = new Date(), cm = now.getFullYear() + '-' + (now.getMonth() < 9 ? '0' : '') + (now.getMonth() + 1);
+    if (m !== cm) return 1;
+    var last = 0;
+    Object.keys(S.data.data[m].days || {}).forEach(function (d) { last = Math.max(last, Number(d.slice(8, 10))); });
+    last = Math.max(last, 1);
+    return Math.min(1, last / lastDayOf(m));
+  }
+
+  function monthAdvice(m) {
+    var s = S.data.data[m], ex = s.expense, inc = s.income, N = S.data.names, tips = [];
+    if (!ex.total && !inc.total) return tips;
+    var base = baseMonths(m), prog = monthProgress(m);
+    var cur = catMap(ex);
+
+    // 1) 이번 달 속도 (진행 중인 달)
+    if (prog < 1 && base.length) {
+      var avg = base.reduce(function (a, b) { return a + S.data.data[b].expense.total; }, 0) / base.length;
+      var proj = ex.total / prog;
+      var diff = proj - avg;
+      if (Math.abs(diff) >= avg * 0.1) {
+        tips.push(diff > 0
+          ? { tone: 'warn', icon: '⏱️', text: '지금 속도면 이번 달 지출이 약 <b>' + manwon(proj) + '</b>이 돼요. 최근 평균(' + manwon(avg) + ')보다 <b>' + manwon(diff) + '</b> 많아요.' }
+          : { tone: 'good', icon: '⏱️', text: '지금 속도면 이번 달 지출은 약 <b>' + manwon(proj) + '</b>로, 최근 평균보다 <b>' + manwon(-diff) + '</b> 적을 것 같아요.' });
+      }
+    }
+
+    // 2) 평소보다 많이/적게 쓴 카테고리 (진행 중인 달은 진행률만큼 기준을 줄여서 비교)
+    if (base.length) {
+      var avgCat = {};
+      base.forEach(function (b) {
+        S.data.data[b].expense.categories.forEach(function (c) { avgCat[c.name] = (avgCat[c.name] || 0) + c.total / base.length; });
+      });
+      var ups = [], downs = [];
+      Object.keys(Object.assign({}, avgCat, cur)).forEach(function (name) {
+        if (name === '기타(미분류)') return;
+        var now = cur[name] ? cur[name].total : 0, was = (avgCat[name] || 0) * prog, d = now - was;
+        if (d >= 50000 && (was === 0 || d / was >= 0.3)) ups.push({ name: name, d: d, p: was ? d / was : 0 });
+        if (prog === 1 && -d >= 50000 && was > 0 && -d / was >= 0.3) downs.push({ name: name, d: -d, p: -d / was });
+      });
+      ups.sort(function (a, b) { return b.d - a.d; });
+      downs.sort(function (a, b) { return b.d - a.d; });
+      ups.slice(0, 2).forEach(function (u) {
+        var who = cur[u.name] ? (cur[u.name].husband >= cur[u.name].wife ? N.husband : N.wife) : '';
+        // 평소 금액이 아주 작으면 %가 과장되므로 % 없이 금액만
+        var pctText = u.p && u.p <= 3 && (u.d / u.p) >= 30000 ? '(+' + Math.round(u.p * 100) + '%)' : '';
+        tips.push({ tone: 'warn', icon: '📈', text: '<b>' + esc(u.name) + '</b> 지출이 평소보다 <b>' + manwon(u.d) + '</b>' +
+          pctText + ' 많아요.' + (who ? ' 주로 ' + esc(who) + ' 쪽이에요.' : ''), cat: u.name });
+      });
+      if (downs.length) {
+        tips.push({ tone: 'good', icon: '👏', text: '<b>' + esc(downs[0].name) + '</b> 지출이 평소보다 <b>' + manwon(downs[0].d) + '</b> 줄었어요.', cat: downs[0].name });
+      }
+    }
+
+    // 3) 수입 − 지출
+    if (prog === 1 && inc.total > 0) {
+      var net = inc.total - ex.total, rate = net / inc.total;
+      if (net < 0) tips.push({ tone: 'warn', icon: '⚠️', text: '이번 달은 쓴 돈이 들어온 돈보다 <b>' + manwon(-net) + '</b> 많았어요.' });
+      else if (rate >= 0.3) tips.push({ tone: 'good', icon: '💰', text: '들어온 돈의 <b>' + Math.round(rate * 100) + '%</b>(' + manwon(net) + ')를 남겼어요. 남은 돈을 저축 계좌로 옮겨 두면 좋아요.' });
+    }
+
+    // 4) 한 카테고리 쏠림
+    var top = ex.categories[0];
+    if (top && ex.total > 0 && top.total / ex.total >= 0.3 && top.name !== '기타(미분류)') {
+      tips.push({ tone: 'info', icon: '🥧', text: '지출의 <b>' + Math.round(top.total / ex.total * 100) + '%</b>를 <b>' + esc(top.name) + '</b>에 썼어요. 줄일 여지가 가장 큰 곳이에요.', cat: top.name });
+    }
+
+    // 5) 구독·정기결제
+    var sub = cur['구독·디지털'];
+    if (sub && sub.total >= 100000) {
+      tips.push({ tone: 'info', icon: '🔁', text: '구독·디지털이 한 달 <b>' + manwon(sub.total) + '</b>이에요. 안 쓰는 구독이 있는지 한 번 확인해 보세요.', cat: '구독·디지털' });
+    }
+
+    // 6) 유난히 많이 쓴 날
+    var days = s.days || {}, keys = Object.keys(days), tot = 0, big = null;
+    keys.forEach(function (d) { var v = days[d].husband + days[d].wife; tot += v; if (!big || v > big.v) big = { d: d, v: v }; });
+    if (big && keys.length >= 5 && big.v >= (tot / keys.length) * 4 && big.v >= 200000) {
+      tips.push({ tone: 'info', icon: '📅', text: '<b>' + dayText(big.d) + '</b>에 ' + manwon(big.v) + '을 썼어요. 하루 평균의 ' + Math.round(big.v / (tot / keys.length)) + '배예요. 큰 지출이 맞는지 확인해 보세요.', day: big.d });
+    }
+
+    // 7) 미분류
+    var unk = cur['기타(미분류)'];
+    if (unk && ex.total > 0 && unk.total / ex.total >= 0.05) {
+      tips.push({ tone: 'info', icon: '🏷️', text: '미분류가 <b>' + manwon(unk.total) + '</b>(' + Math.round(unk.total / ex.total * 100) + '%) 있어요. 카테고리를 정해 주면 조언이 더 정확해져요.', cat: '기타(미분류)' });
+    }
+
+    if (!base.length && prog === 1) {
+      tips.push({ tone: 'info', icon: 'ℹ️', text: '비교할 앞 달 기록이 부족해서 평소와 비교한 조언은 다음 달부터 나와요.' });
+    }
+    return tips;
+  }
+
+  function yearAdvice(Y) {
+    var tips = [], ms = Y.months, N = S.data.names;
+    if (!ms.length) return tips;
+    var full = ms.filter(function (r) { return monthProgress(r.month) === 1; });
+    if (full.length >= 2) {
+      var hi = full.slice().sort(function (a, b) { return b.expense.total - a.expense.total; })[0];
+      var avg = full.reduce(function (a, r) { return a + r.expense.total; }, 0) / full.length;
+      if (hi.expense.total >= avg * 1.2) {
+        tips.push({ tone: 'info', icon: '📊', text: '가장 많이 쓴 달은 <b>' + Number(hi.month.slice(5)) + '월(' + manwon(hi.expense.total) + ')</b>로, 월평균보다 ' + manwon(hi.expense.total - avg) + ' 많았어요.' });
+      }
+      var minus = full.filter(function (r) { return r.income.total - r.expense.total < 0; });
+      if (minus.length) tips.push({ tone: 'warn', icon: '⚠️', text: '지출이 수입보다 많았던 달이 <b>' + minus.length + '번</b> 있었어요(' + minus.map(function (r) { return Number(r.month.slice(5)) + '월'; }).join(', ') + ').' });
+    }
+    var inc = Y.income.total, net = inc - Y.expense.total;
+    if (inc > 0) {
+      tips.push(net >= 0
+        ? { tone: 'good', icon: '💰', text: '올해 들어온 돈의 <b>' + Math.round(net / inc * 100) + '%</b>(' + manwon(net) + ')를 남겼어요.' }
+        : { tone: 'warn', icon: '⚠️', text: '올해는 지출이 수입보다 <b>' + manwon(-net) + '</b> 많아요.' });
+    }
+    var top3 = Y.expense.categories.filter(function (c) { return c.name !== '기타(미분류)'; }).slice(0, 3);
+    if (top3.length && Y.expense.total) {
+      var share = top3.reduce(function (a, c) { return a + c.total; }, 0) / Y.expense.total;
+      tips.push({ tone: 'info', icon: '🥧', text: '많이 쓴 3곳은 ' + top3.map(function (c) { return '<b>' + esc(c.name) + '</b>'; }).join(', ') +
+        '로 전체의 ' + Math.round(share * 100) + '%예요. 이 중 한 곳만 10% 줄여도 1년에 약 ' + manwon(top3[0].total / Y.months.length * 12 * 0.1) + '을 아낄 수 있어요.' });
+    }
+    var sub = Y.expense.categories.filter(function (c) { return c.name === '구독·디지털'; })[0];
+    if (sub) tips.push({ tone: 'info', icon: '🔁', text: '구독·디지털에 올해 ' + manwon(sub.total) + '(월평균 ' + manwon(sub.total / Y.months.length) + ')을 썼어요.' });
+    var gap = ms.filter(function (r) { return !r.expense.husband || !r.expense.wife; });
+    if (gap.length) tips.push({ tone: 'info', icon: 'ℹ️', text: Number(gap[0].month.slice(5)) + '월 등 ' + gap.length + '달은 한 사람의 기록이 없어요. 엑셀을 올리면 더 정확해져요.' });
+    return tips;
+  }
+
+  function advicePanel(tips, title) {
+    if (!tips.length) return '';
+    return '<section class="panel advice"><div class="panel-head"><h2>' + title + '</h2></div>' +
+      tips.slice(0, 5).map(function (t) {
+        var attr = t.cat ? ' data-adv-cat="' + esc(t.cat) + '"' : t.day ? ' data-adv-day="' + t.day + '"' : '';
+        return '<' + (attr ? 'button' : 'div') + ' class="tip ' + t.tone + '"' + attr + '><span class="ti">' + t.icon + '</span><span class="tt">' + t.text + '</span>' +
+          (attr ? '<span class="tg">›</span>' : '') + '</' + (attr ? 'button' : 'div') + '>';
+      }).join('') + '<p class="advice-note">기록된 거래만 보고 계산한 참고용 조언이에요.</p></section>';
+  }
+  function bindAdvice(v) {
+    v.querySelectorAll('[data-adv-cat]').forEach(function (b) {
+      b.onclick = function () { S.view = 'month'; goTx({ kind: '지출', category: b.getAttribute('data-adv-cat') }); };
+    });
+    v.querySelectorAll('[data-adv-day]').forEach(function (b) {
+      b.onclick = function () { goTx({ kind: '지출', day: b.getAttribute('data-adv-day') }); };
+    });
+  }
+
   function viewSeg() {
     return '<div class="seg view-seg"><button data-view="month" class="' + (S.view === 'month' ? 'on' : '') + '">월별</button>' +
       '<button data-view="year" class="' + (S.view === 'year' ? 'on' : '') + '">' + curYear() + '년 누적</button></div>';
@@ -525,6 +745,8 @@
         '<div class="sub num">수입 <span class="inc">' + fmt(inc[p[0]]) + '</span></div></div>';
     });
     html += '</div>';
+
+    html += advicePanel(yearAdvice(Y), y + '년 조언');
 
     // 월별 흐름
     var maxM = 0;
@@ -610,6 +832,7 @@
     });
     html += '</div>';
 
+    html += advicePanel(monthAdvice(m), '이번 달 조언');
     html += renderCalendar(m, s);
 
     html += catPanel(s, '', true);
@@ -1020,6 +1243,7 @@
   };
   $('tabSummary').onclick = function () { S.tab = 'summary'; render(); };
   $('tabTx').onclick = function () { goTx({}); };
+  $('tabConsult').onclick = function () { S.tab = 'consult'; S.reports = null; render(); window.scrollTo(0, 0); };
   document.querySelectorAll('[data-close]').forEach(function (el) {
     el.onclick = function () { closeSheet(el.getAttribute('data-close')); };
   });
