@@ -21,6 +21,8 @@
     --accent: #2f3a45;
     --accent-text: #ffffff;
     --shadow: 0 10px 30px rgba(0,0,0,.18);
+    /* 리포트 차트 색 (색약·밝기 검사 통과 순서) */
+    --s1: #3b6ea8; --s2: #d0715a; --s3: #6250d6; --s4: #1baf7a; --s5: #eda100; --s6: #e87ba4; --s-other: #a9a8a0;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -38,6 +40,7 @@
       --accent: #dfe3e7;
       --accent-text: #17191c;
       --shadow: 0 10px 30px rgba(0,0,0,.5);
+      --s1: #3987e5; --s2: #d95926; --s3: #9085e9; --s4: #199e70; --s5: #c98500; --s6: #d55181; --s-other: #6b6a64;
     }
   }
   * { box-sizing: border-box; }
@@ -154,6 +157,47 @@
   .r-body li { margin: 3px 0; }
   .r-body .r-warn { background: var(--soft); border-left: 4px solid var(--danger); border-radius: 8px; padding: 8px 10px; }
   .r-body .r-good { background: var(--soft); border-left: 4px solid var(--income); border-radius: 8px; padding: 8px 10px; }
+
+  /* 리포트 차트 */
+  .s1 { --c: var(--s1); } .s2 { --c: var(--s2); } .s3 { --c: var(--s3); } .s4 { --c: var(--s4); } .s5 { --c: var(--s5); } .s6 { --c: var(--s6); }
+  .other { --c: var(--s-other); }
+  figure.chart { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+  figure.chart figcaption { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+  figure.chart figcaption span { font-weight: 400; color: var(--muted); }
+  .c-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .c-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--c); display: inline-block; flex: none; }
+  .c-bars { display: grid; gap: 7px; }
+  .c-row { display: grid; grid-template-columns: minmax(56px, 30%) 1fr; gap: 8px; align-items: center; }
+  .c-lab { font-size: 12px; color: var(--muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .c-grp { display: grid; gap: 2px; }
+  .c-bar { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .c-bar i { display: block; height: 10px; background: var(--c); border-radius: 0 4px 4px 0; flex: none; max-width: calc(100% - 52px); }
+  .c-bar i.neg { opacity: .45; }
+  .c-bar b { font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .c-stack { display: flex; gap: 2px; height: 16px; border-radius: 4px; overflow: hidden; }
+  .c-stack i { display: block; background: var(--c); min-width: 2px; }
+  .c-key { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 12px; }
+  .c-key li { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 6px; align-items: center; }
+  .c-key em { font-style: normal; color: var(--muted); min-width: 56px; text-align: right; }
+  svg.c-line { width: 100%; height: auto; display: block; overflow: visible; }
+  svg.c-line .grid { stroke: var(--line); stroke-width: 1; }
+  svg.c-line .grid.zero { stroke: var(--muted); }
+  svg.c-line .ax { fill: var(--muted); font-size: 11px; }
+  svg.c-line .ln { fill: none; stroke: var(--c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  svg.c-line .pt { fill: var(--c); stroke: var(--bg); stroke-width: 2; }
+  svg.c-line .hit { fill: transparent; cursor: default; }
+  svg.c-line .dl { fill: var(--text); font-size: 11px; font-weight: 600; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 12px 0; }
+  .stat { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg); }
+  .stat .sl { font-size: 12px; color: var(--muted); }
+  .stat .sv { font-size: 18px; font-weight: 700; letter-spacing: -0.4px; white-space: nowrap; }
+  .stat .ss { font-size: 12px; color: var(--muted); }
+  details.c-table { margin-top: 8px; font-size: 12px; }
+  details.c-table summary { color: var(--muted); cursor: pointer; }
+  details.c-table table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+  details.c-table th, details.c-table td { border-bottom: 1px solid var(--line); padding: 3px 4px; text-align: left; }
+  details.c-table td.num { text-align: right; }
 
   .transfer { font-size: 13px; color: var(--muted); }
   .transfer b { color: var(--text); }
@@ -441,9 +485,125 @@
 
   // ───────── 컨설팅 화면 ─────────
   // 내용 서식: 줄 맨 앞 '## ' = 소제목, '- ' = 목록, '**굵게**', '!! ' = 주의 문단, '✓ ' = 잘한 점
+  // 리포트 안의 그림. 블록 문법:
+  //   [차트 막대: 제목 | 단위]          라벨 = 값
+  //   [차트 비교: 제목 | 단위 | 시리즈1 | 시리즈2]   라벨 = 값1, 값2
+  //   [차트 추이: 제목 | 단위 | 시리즈1 | 시리즈2]   라벨 = 값1, 값2   (꺾은선)
+  //   [차트 비율: 제목 | 단위]          라벨 = 값   (100% 막대)
+  //   [숫자]                            라벨 = 값 = 보조 문구
+  //   … [/차트] 또는 [/숫자]로 닫음
+  function num(v) { return Number(String(v).replace(/[^0-9.\-]/g, '')) || 0; }
+  function fmtNum(v) { return won.format(Math.round(v * 10) / 10); }
+  function slotOf(name, i) { return name === S.data.names.husband ? 1 : name === S.data.names.wife ? 2 : Math.min(i + 1, 6); }
+  function chartTable(head, rows) {
+    return '<details class="c-table"><summary>표로 보기</summary><table><tr>' + head.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr>' +
+      rows.map(function (r) { return '<tr>' + r.map(function (c, i) { return '<td' + (i ? ' class="num"' : '') + '>' + esc(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table></details>';
+  }
+  function legend(series) {
+    if (series.length < 2) return '';
+    return '<div class="c-legend">' + series.map(function (s, i) { return '<span><i class="sw s' + slotOf(s, i) + '"></i>' + esc(s) + '</span>'; }).join('') + '</div>';
+  }
+  function renderBlock(kind, head, lines) {
+    var parts = head.split('|').map(function (x) { return x.trim(); });
+    var title = parts[0] || '', unit = parts[1] || '', series = parts.slice(2);
+    var rows = lines.map(function (l) {
+      var i = l.indexOf('=');
+      if (i < 0) return null;
+      var vals = l.slice(i + 1).split(kind === '숫자' ? '=' : ',').map(function (x) { return x.trim(); });
+      return { label: l.slice(0, i).trim(), vals: vals };
+    }).filter(Boolean);
+    if (!rows.length) return '';
+    var h = '<figure class="chart">' + (title && kind !== '숫자' ? '<figcaption>' + esc(title) + (unit ? ' <span>(' + esc(unit) + ')</span>' : '') + '</figcaption>' : '');
+
+    if (kind === '숫자') {
+      return '<div class="stats">' + rows.map(function (r) {
+        return '<div class="stat"><div class="sl">' + esc(r.label) + '</div><div class="sv num">' + esc(r.vals[0] || '') + '</div>' +
+          (r.vals[1] ? '<div class="ss">' + esc(r.vals[1]) + '</div>' : '') + '</div>';
+      }).join('') + '</div>';
+    }
+
+    if (kind === '막대' || kind === '비교') {
+      if (!series.length) series = [''];
+      var max = 0;
+      rows.forEach(function (r) { r.vals.forEach(function (v) { max = Math.max(max, Math.abs(num(v))); }); });
+      h += legend(series.filter(Boolean)) + '<div class="c-bars">';
+      rows.forEach(function (r) {
+        h += '<div class="c-row"><div class="c-lab">' + esc(r.label) + '</div><div class="c-grp">';
+        series.forEach(function (s, i) {
+          var v = num(r.vals[i]);
+          h += '<div class="c-bar" title="' + esc(r.label + (s ? ' · ' + s : '') + ': ' + fmtNum(v) + unit) + '">' +
+            '<i class="s' + slotOf(s, i) + (v < 0 ? ' neg' : '') + '" style="width:' + (max ? Math.max(1.5, Math.abs(v) / max * 100) : 0) + '%"></i>' +
+            '<b class="num">' + (v < 0 ? '−' : '') + fmtNum(Math.abs(v)) + '</b></div>';
+        });
+        h += '</div></div>';
+      });
+      h += '</div>';
+      var hd = ['항목'].concat(series.map(function (s) { return (s || '값') + (unit ? ' (' + unit + ')' : ''); }));
+      return h + chartTable(hd, rows.map(function (r) { return [r.label].concat(series.map(function (s, i) { return fmtNum(num(r.vals[i])); })); })) + '</figure>';
+    }
+
+    if (kind === '비율') {
+      var total = rows.reduce(function (a, r) { return a + Math.max(0, num(r.vals[0])); }, 0) || 1;
+      // 색은 6칸까지(고정 순서), 나머지는 회색 '그 외'로 묶음
+      var items = rows.slice(0, 6).map(function (r, i) { return { label: r.label, v: num(r.vals[0]), slot: i + 1 }; });
+      if (rows.length > 6) items.push({ label: '그 외', v: rows.slice(6).reduce(function (a, r) { return a + num(r.vals[0]); }, 0), other: true });
+      h += '<div class="c-stack">' + items.map(function (it) {
+        return '<i class="' + (it.other ? 'other' : 's' + it.slot) + '" style="flex:' + Math.max(0, it.v) + '" title="' + esc(it.label + ': ' + fmtNum(it.v) + unit + ' (' + Math.round(it.v / total * 100) + '%)') + '"></i>';
+      }).join('') + '</div><ul class="c-key">' + items.map(function (it) {
+        return '<li><i class="sw ' + (it.other ? 'other' : 's' + it.slot) + '"></i><span>' + esc(it.label) + '</span><b class="num">' + Math.round(it.v / total * 100) + '%</b><em class="num">' + fmtNum(it.v) + unit + '</em></li>';
+      }).join('') + '</ul>';
+      return h + chartTable(['항목', '값 (' + unit + ')', '비율'], rows.map(function (r) { return [r.label, fmtNum(num(r.vals[0])), Math.round(num(r.vals[0]) / total * 100) + '%']; })) + '</figure>';
+    }
+
+    if (kind === '추이') {
+      if (!series.length) series = [''];
+      var W = 280, H = 170, L = 30, R = 50, T = 10, B = 24;
+      var all = []; rows.forEach(function (r) { series.forEach(function (s, i) { all.push(num(r.vals[i])); }); });
+      var lo = Math.min(0, Math.min.apply(null, all)), hi = Math.max.apply(null, all);
+      var step = Math.pow(10, Math.floor(Math.log10((hi - lo) || 1))); var top = Math.ceil(hi / step) * step; if (top / step > 6) step *= 2;
+      top = Math.ceil(hi / step) * step || 1; var bot = lo < 0 ? Math.floor(lo / step) * step : 0;
+      var x = function (i) { return L + (rows.length > 1 ? i * (W - L - R) / (rows.length - 1) : (W - L - R) / 2); };
+      var y = function (v) { return T + (top - v) / (top - bot) * (H - T - B); };
+      var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="c-line" role="img" aria-label="' + esc(title) + '">';
+      for (var g = bot; g <= top + 1e-9; g += step) {
+        svg += '<line class="grid' + (g === 0 ? ' zero' : '') + '" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(g) + '" y2="' + y(g) + '"/>' +
+          '<text class="ax" x="' + (L - 4) + '" y="' + (y(g) + 3) + '" text-anchor="end">' + fmtNum(g) + '</text>';
+      }
+      var every = Math.ceil(rows.length / 7);
+      rows.forEach(function (r, i) { if (i % every === 0 || i === rows.length - 1) svg += '<text class="ax" x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + esc(r.label) + '</text>'; });
+      series.forEach(function (s, si) {
+        var cls = 's' + slotOf(s, si);
+        svg += '<polyline class="ln ' + cls + '" points="' + rows.map(function (r, i) { return x(i) + ',' + y(num(r.vals[si])); }).join(' ') + '"/>';
+        rows.forEach(function (r, i) {
+          var v = num(r.vals[si]);
+          svg += '<circle class="pt ' + cls + '" cx="' + x(i) + '" cy="' + y(v) + '" r="3.5"/><circle class="hit" cx="' + x(i) + '" cy="' + y(v) + '" r="10"><title>' +
+            esc(r.label + (s ? ' · ' + s : '') + ': ' + fmtNum(v) + unit) + '</title></circle>';
+        });
+        var lv = num(rows[rows.length - 1].vals[si]);
+        if (s && series.length <= 4) svg += '<text class="dl" x="' + (x(rows.length - 1) + 6) + '" y="' + (y(lv) + 3) + '">' + esc(s) + '</text>';
+      });
+      svg += '</svg>';
+      h += legend(series.filter(Boolean)) + svg;
+      var hd2 = ['항목'].concat(series.map(function (s) { return (s || '값') + (unit ? ' (' + unit + ')' : ''); }));
+      return h + chartTable(hd2, rows.map(function (r) { return [r.label].concat(series.map(function (s, i) { return fmtNum(num(r.vals[i])); })); })) + '</figure>';
+    }
+    return '';
+  }
+
   function fmtReport(text) {
-    var out = [], list = false;
+    var out = [], list = false, block = null;
     String(text).split(/\r?\n/).forEach(function (line) {
+      var t = line.trim(), m;
+      if (block) {
+        if (/^\[\/(차트|숫자)\]$/.test(t)) { out.push(renderBlock(block.kind, block.head, block.lines)); block = null; }
+        else if (t) block.lines.push(t);
+        return;
+      }
+      if ((m = t.match(/^\[차트 (막대|비교|추이|비율)\s*:\s*(.*)\]$/)) || (m = t.match(/^\[(숫자)\]$/))) {
+        if (list) { out.push('</ul>'); list = false; }
+        block = { kind: m[1], head: m[2] || '', lines: [] };
+        return;
+      }
       var l = esc(line.trim()).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
       var isItem = /^- /.test(line.trim());
       if (list && !isItem) { out.push('</ul>'); list = false; }
@@ -455,6 +615,7 @@
       else out.push('<p>' + l + '</p>');
     });
     if (list) out.push('</ul>');
+    if (block) out.push(renderBlock(block.kind, block.head, block.lines));
     return out.join('');
   }
   function renderConsult() {
